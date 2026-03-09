@@ -15,14 +15,14 @@ export function filterConfirmedMeetings(
     // Exclude all-day events (they're not time-blocked meetings)
     if (e.isAllDay) return false;
 
-    // Exclude free or tentative showAs
-    if (e.showAs === "free" || e.showAs === "tentative") return false;
+    // Exclude free or tentative showAs (if provided)
+    if (e.showAs && (e.showAs === "free" || e.showAs === "tentative")) return false;
 
-    // Exclude declined
-    if (e.responseStatus === "declined") return false;
+    // Exclude declined (if provided)
+    if (e.responseStatus && e.responseStatus === "declined") return false;
 
-    // Exclude tentatively accepted
-    if (e.responseStatus === "tentativelyAccepted") return false;
+    // Exclude tentatively accepted (if provided)
+    if (e.responseStatus && e.responseStatus === "tentativelyAccepted") return false;
 
     // Exclude focus time by keyword match
     const subjectLower = (e.subject ?? "").toLowerCase();

@@ -1,4 +1,10 @@
 // Prep My Day — MCP + HTTP hybrid server entry point
+//
+// Architecture: M365 Copilot declarative agent pattern
+// - Copilot fetches calendar events via built-in Meetings capability
+// - Copilot fetches tasks via WorkIQ / built-in capabilities
+// - This server receives pre-fetched data, filters/computes, and returns formatted output
+// - NO direct Graph API calls, NO custom auth — Copilot handles all M365 access
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -8,18 +14,11 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import { z } from "zod";
 
-import { authenticate, isAuthenticated, getAccessToken } from "./graph-auth.js";
-import { fetchCalendarEvents } from "./calendar-service.js";
 import { buildDaySummary, buildWeekSummaries } from "./schedule-builder.js";
-import { getUpcomingTasks, setWorkIqQueryFn } from "./workiq-service.js";
 import {
   formatWeeklySummary,
   formatDailySummary,
-  formatWeeklySummaryText,
-  formatDailySummaryText,
 } from "./message-formatter.js";
-import { sendTeamsMessage, sendTeamsCard } from "./teams-sender.js";
-import { startScheduler, stopScheduler, getSchedulerStatus } from "./scheduler.js";
 import {
   DEFAULT_CONFIG,
   getNextMonday,
@@ -28,13 +27,39 @@ import {
 } from "./types.js";
 import type {
   PrepMyDayConfig,
-  WeeklySummary,
-  DailySummaryResult,
+  CalendarEvent,
+  TaskItem,
 } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, "..", "data", "config.json");
 const PORT = parseInt(process.env.PORT ?? "3003", 10);
+
+// ── Zod schemas for tool inputs ──
+
+const CalendarEventSchema = z.object({
+  subject: z.string(),
+  startTime: z.string().describe("ISO 8601 datetime or 'HH:MM AM/PM' format"),
+  endTime: z.string().describe("ISO 8601 datetime or 'HH:MM AM/PM' format"),
+  organizer: z.string().optional(),
+  attendees: z.array(z.string()).optional(),
+  location: z.string().optional(),
+  isOnline: z.boolean().optional(),
+  joinUrl: z.string().optional(),
+  showAs: z.enum(["free", "tentative", "busy", "oof", "workingElsewhere", "unknown"]).optional(),
+  responseStatus: z.enum(["none", "organizer", "tentativelyAccepted", "accepted", "declined", "notResponded"]).optional(),
+  categories: z.array(z.string()).optional(),
+  isAllDay: z.boolean().optional(),
+});
+
+const TaskItemSchema = z.object({
+  title: z.string(),
+  dueDate: z.string().optional(),
+  source: z.string().optional(),
+  sourceDetail: z.string().optional(),
+  documentUrl: z.string().optional(),
+  priority: z.enum(["high", "normal", "low"]).optional(),
+});
 
 // ── Config persistence ──
 
@@ -59,68 +84,35 @@ function saveConfig(): void {
 
 loadConfig();
 
-// ── Core logic ──
+// ── Time parsing helper ──
+// Copilot may pass times as "10:00 AM" or ISO strings.
+// We normalize to ISO for a given date.
 
-async function generateWeekly(weekStartDate?: string): Promise<WeeklySummary> {
-  const monday = weekStartDate ?? toISODate(getNextMonday());
-  const fridayDate = new Date(monday + "T12:00:00");
-  fridayDate.setDate(fridayDate.getDate() + 4);
-  const friday = toISODate(fridayDate);
-
-  const events = await fetchCalendarEvents(monday, friday);
-  const days = buildWeekSummaries(monday, events, config);
-  const tasks = await getUpcomingTasks("week", monday);
-
-  return {
-    weekStartDate: monday,
-    days,
-    tasks,
-    generatedAt: new Date().toISOString(),
-  };
+function normalizeEventTimes(events: CalendarEvent[], dateStr: string): CalendarEvent[] {
+  return events.map((e) => ({
+    ...e,
+    startTime: toISO(e.startTime, dateStr),
+    endTime: toISO(e.endTime, dateStr),
+  }));
 }
 
-async function generateDaily(targetDate?: string): Promise<DailySummaryResult> {
-  const date = targetDate ?? toISODate(getNextWorkday());
-  const events = await fetchCalendarEvents(date, date);
-  const day = buildDaySummary(date, events, config);
-  const tasks = await getUpcomingTasks("day", date);
+function toISO(time: string, dateStr: string): string {
+  // Already ISO?
+  if (time.includes("T")) return time;
 
-  return {
-    targetDate: date,
-    day,
-    tasks,
-    generatedAt: new Date().toISOString(),
-  };
-}
-
-async function handleTrigger(type: "weekly" | "daily"): Promise<string> {
-  if (!isAuthenticated()) {
-    return "Not authenticated — cannot send summary. Run authenticate first.";
+  // Parse "10:00 AM", "2:30 PM" etc.
+  const match = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const ampm = match[3]?.toUpperCase();
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+    return `${dateStr}T${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:00`;
   }
 
-  if (type === "weekly") {
-    const summary = await generateWeekly();
-    const formatted = formatWeeklySummary(summary);
-
-    if (config.teamsDelivery) {
-      const result = await sendTeamsCard(formatted.adaptiveCard);
-      return result.success
-        ? `Weekly summary sent to Teams.\n\n${formatted.plainText}`
-        : `Failed to send: ${result.message}\n\n${formatted.plainText}`;
-    }
-    return formatted.plainText;
-  } else {
-    const summary = await generateDaily();
-    const formatted = formatDailySummary(summary);
-
-    if (config.teamsDelivery) {
-      const result = await sendTeamsCard(formatted.adaptiveCard);
-      return result.success
-        ? `Daily summary sent to Teams.\n\n${formatted.plainText}`
-        : `Failed to send: ${result.message}\n\n${formatted.plainText}`;
-    }
-    return formatted.plainText;
-  }
+  // Fallback: return as-is
+  return time;
 }
 
 // ── MCP Server ──
@@ -130,7 +122,7 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Resources
+// Resource: schedule format guide
 server.resource("schedule-guide", "guide://schedule-format", async () => ({
   contents: [{
     uri: "guide://schedule-format",
@@ -138,41 +130,36 @@ server.resource("schedule-guide", "guide://schedule-format", async () => ({
     text: [
       "Prep My Day Schedule Format Guide",
       "==================================",
-      "Weekly (Sunday 3PM): Mon–Fri schedule with meetings + free blocks + tasks",
-      "Daily (Weekday 5PM): Next workday schedule with meetings + free blocks + tasks",
+      "Copilot fetches calendar events via built-in Meetings capability,",
+      "then passes them to this server for filtering and formatting.",
       "",
       "Confirmed meetings: showAs=busy AND responseStatus=accepted/organizer",
-      "Free time: gaps between meetings within working hours (default 9AM–5PM)",
       "Excluded: tentative, focus time, lunch blocks, declined, all-day events",
+      "Free time: gaps between confirmed meetings within working hours (default 9–5)",
       "",
-      "Output: concise text optimized for mobile Teams reading",
+      "Output: concise text + Adaptive Card, optimized for mobile Teams reading",
     ].join("\n"),
   }],
 }));
 
-// Tool 1: authenticate
+// Tool 1: render_weekly_summary
 server.tool(
-  "authenticate",
-  "Authenticate with Microsoft Graph for calendar and Teams access",
-  {},
-  async () => {
-    let deviceCodeMsg = "";
-    const result = await authenticate((msg) => { deviceCodeMsg = msg; });
-    const text = result.success
-      ? result.message
-      : `${result.message}\n\n${deviceCodeMsg}`;
-    return { content: [{ type: "text", text }] };
+  "render_weekly_summary",
+  "Render a weekly schedule summary from pre-fetched calendar events and tasks. Copilot should fetch Mon–Fri meetings via Meetings capability and tasks via WorkIQ before calling this tool.",
+  {
+    weekStartDate: z.string().describe("Monday date (YYYY-MM-DD)"),
+    meetings: z.array(CalendarEventSchema).describe("All calendar events for Mon–Fri, fetched by Copilot"),
+    tasks: z.array(TaskItemSchema).optional().describe("Upcoming tasks/follow-ups from WorkIQ"),
   },
-);
-
-// Tool 2: generate_weekly_summary
-server.tool(
-  "generate_weekly_summary",
-  "Generate a weekly schedule summary for Mon–Fri with meetings, free blocks, and tasks",
-  { weekStartDate: z.string().optional().describe("Monday date (YYYY-MM-DD). Defaults to next Monday.") },
-  async ({ weekStartDate }) => {
+  async ({ weekStartDate, meetings, tasks }) => {
     try {
-      const summary = await generateWeekly(weekStartDate);
+      const days = buildWeekSummaries(weekStartDate, meetings as CalendarEvent[], config);
+      const summary = {
+        weekStartDate,
+        days,
+        tasks: (tasks as TaskItem[]) ?? [],
+        generatedAt: new Date().toISOString(),
+      };
       const formatted = formatWeeklySummary(summary);
       return { content: [{ type: "text", text: formatted.plainText }] };
     } catch (error: unknown) {
@@ -182,14 +169,25 @@ server.tool(
   },
 );
 
-// Tool 3: generate_daily_summary
+// Tool 2: render_daily_summary
 server.tool(
-  "generate_daily_summary",
-  "Generate a next-day schedule summary with meetings, free blocks, and tasks",
-  { targetDate: z.string().optional().describe("Target date (YYYY-MM-DD). Defaults to next workday.") },
-  async ({ targetDate }) => {
+  "render_daily_summary",
+  "Render a next-day schedule summary from pre-fetched calendar events and tasks. Copilot should fetch the target day's meetings via Meetings capability and tasks via WorkIQ before calling this tool.",
+  {
+    targetDate: z.string().describe("Target date (YYYY-MM-DD)"),
+    meetings: z.array(CalendarEventSchema).describe("Calendar events for the target date, fetched by Copilot"),
+    tasks: z.array(TaskItemSchema).optional().describe("Upcoming tasks/follow-ups from WorkIQ"),
+  },
+  async ({ targetDate, meetings, tasks }) => {
     try {
-      const summary = await generateDaily(targetDate);
+      const normalized = normalizeEventTimes(meetings as CalendarEvent[], targetDate);
+      const day = buildDaySummary(targetDate, normalized, config);
+      const summary = {
+        targetDate,
+        day,
+        tasks: (tasks as TaskItem[]) ?? [],
+        generatedAt: new Date().toISOString(),
+      };
       const formatted = formatDailySummary(summary);
       return { content: [{ type: "text", text: formatted.plainText }] };
     } catch (error: unknown) {
@@ -199,99 +197,17 @@ server.tool(
   },
 );
 
-// Tool 4: get_upcoming_tasks
-server.tool(
-  "get_upcoming_tasks",
-  "Query WorkIQ for upcoming tasks and project follow-ups",
-  {
-    timeframe: z.enum(["week", "day"]).describe("Timeframe: 'week' or 'day'"),
-    targetDate: z.string().optional().describe("Target date (YYYY-MM-DD) for context"),
-  },
-  async ({ timeframe, targetDate }) => {
-    try {
-      const tasks = await getUpcomingTasks(timeframe, targetDate);
-      if (tasks.length === 0) {
-        return { content: [{ type: "text", text: "No upcoming tasks found." }] };
-      }
-      const lines = tasks.map((t) => {
-        let line = `• ${t.title}`;
-        if (t.dueDate) line += ` (due ${t.dueDate})`;
-        if (t.documentUrl) line += ` — ${t.documentUrl}`;
-        return line;
-      });
-      return { content: [{ type: "text", text: lines.join("\n") }] };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: `Error: ${msg}` }] };
-    }
-  },
-);
-
-// Tool 5: send_summary
-server.tool(
-  "send_summary",
-  "Send a formatted summary to the user via Teams message",
-  {
-    summaryType: z.enum(["weekly", "daily"]).describe("Type of summary to send"),
-    targetDate: z.string().optional().describe("Target date (YYYY-MM-DD)"),
-  },
-  async ({ summaryType, targetDate }) => {
-    try {
-      if (!isAuthenticated()) {
-        return { content: [{ type: "text", text: "Not authenticated. Run authenticate first." }] };
-      }
-
-      let text: string;
-      let card: Record<string, unknown>;
-
-      if (summaryType === "weekly") {
-        const summary = await generateWeekly(targetDate);
-        const formatted = formatWeeklySummary(summary);
-        text = formatted.plainText;
-        card = formatted.adaptiveCard;
-      } else {
-        const summary = await generateDaily(targetDate);
-        const formatted = formatDailySummary(summary);
-        text = formatted.plainText;
-        card = formatted.adaptiveCard;
-      }
-
-      // Try Adaptive Card first, fall back to text
-      let result = await sendTeamsCard(card);
-      if (!result.success) {
-        result = await sendTeamsMessage(text);
-      }
-
-      const status = result.success ? "✅ Sent to Teams" : `❌ ${result.message}`;
-      return { content: [{ type: "text", text: `${status}\n\n${text}` }] };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: `Error: ${msg}` }] };
-    }
-  },
-);
-
-// Tool 6: get_config
+// Tool 3: get_config
 server.tool(
   "get_config",
-  "Get current Prep My Day configuration (working hours, triggers, timezone)",
+  "Get current Prep My Day configuration (working hours, timezone, filter keywords)",
   {},
   async () => {
-    const scheduler = getSchedulerStatus();
     const configText = [
       "Prep My Day Configuration",
       "=========================",
       `Working hours: ${config.workingHoursStart}:00–${config.workingHoursEnd}:00`,
       `Timezone: ${config.timezone}`,
-      `Teams auto-delivery: ${config.teamsDelivery ? "ON" : "OFF"}`,
-      "",
-      `Weekly trigger: ${config.weeklyTrigger.enabled ? "ON" : "OFF"} — ${config.weeklyTrigger.description}`,
-      `  Cron: ${config.weeklyTrigger.cronExpression}`,
-      `  Scheduler running: ${scheduler.weekly ? "YES" : "NO"}`,
-      "",
-      `Daily trigger: ${config.dailyTrigger.enabled ? "ON" : "OFF"} — ${config.dailyTrigger.description}`,
-      `  Cron: ${config.dailyTrigger.cronExpression}`,
-      `  Scheduler running: ${scheduler.daily ? "YES" : "NO"}`,
       "",
       `Focus time keywords: ${config.focusTimeKeywords.join(", ")}`,
       `Lunch keywords: ${config.lunchKeywords.join(", ")}`,
@@ -300,49 +216,25 @@ server.tool(
   },
 );
 
-// Tool 7: set_config
+// Tool 4: set_config
 server.tool(
   "set_config",
-  "Update Prep My Day configuration",
+  "Update Prep My Day configuration (working hours, timezone, filter keywords)",
   {
     workingHoursStart: z.number().min(0).max(23).optional().describe("Work start hour (0-23)"),
     workingHoursEnd: z.number().min(0).max(23).optional().describe("Work end hour (0-23)"),
     timezone: z.string().optional().describe("IANA timezone (e.g., 'America/Los_Angeles')"),
-    teamsDelivery: z.boolean().optional().describe("Auto-send summaries via Teams"),
-    weeklyEnabled: z.boolean().optional().describe("Enable weekly trigger"),
-    dailyEnabled: z.boolean().optional().describe("Enable daily trigger"),
+    focusTimeKeywords: z.array(z.string()).optional().describe("Subjects/categories treated as free time"),
+    lunchKeywords: z.array(z.string()).optional().describe("Subjects/categories treated as free time"),
   },
   async (params) => {
     if (params.workingHoursStart !== undefined) config.workingHoursStart = params.workingHoursStart;
     if (params.workingHoursEnd !== undefined) config.workingHoursEnd = params.workingHoursEnd;
     if (params.timezone !== undefined) config.timezone = params.timezone;
-    if (params.teamsDelivery !== undefined) config.teamsDelivery = params.teamsDelivery;
-    if (params.weeklyEnabled !== undefined) config.weeklyTrigger.enabled = params.weeklyEnabled;
-    if (params.dailyEnabled !== undefined) config.dailyTrigger.enabled = params.dailyEnabled;
+    if (params.focusTimeKeywords !== undefined) config.focusTimeKeywords = params.focusTimeKeywords;
+    if (params.lunchKeywords !== undefined) config.lunchKeywords = params.lunchKeywords;
     saveConfig();
-
-    // Restart scheduler with new config
-    startScheduler(handleTrigger, config);
-
-    return { content: [{ type: "text", text: "Configuration updated and scheduler restarted." }] };
-  },
-);
-
-// Tool 8: trigger_now
-server.tool(
-  "trigger_now",
-  "Manually fire a weekly or daily summary trigger right now",
-  {
-    type: z.enum(["weekly", "daily"]).describe("Which trigger to fire"),
-  },
-  async ({ type }) => {
-    try {
-      const result = await handleTrigger(type);
-      return { content: [{ type: "text", text: result }] };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: `Trigger failed: ${msg}` }] };
-    }
+    return { content: [{ type: "text", text: "Configuration updated." }] };
   },
 );
 
@@ -352,92 +244,71 @@ const app = express();
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    agent: "prep-my-day",
-    authenticated: isAuthenticated(),
-    scheduler: getSchedulerStatus(),
-  });
+  res.json({ status: "ok", agent: "prep-my-day", version: "1.0.0" });
 });
 
-app.post("/api/authenticate", async (_req, res) => {
-  let deviceCodeMsg = "";
-  const result = await authenticate((msg) => { deviceCodeMsg = msg; });
-  res.json({ ...result, deviceCodeMessage: deviceCodeMsg || undefined });
-});
-
-app.get("/api/weekly-summary", async (req, res) => {
+// POST /api/render-weekly-summary
+app.post("/api/render-weekly-summary", async (req, res) => {
   try {
-    const weekStartDate = req.query.weekStartDate as string | undefined;
-    const summary = await generateWeekly(weekStartDate);
+    const { weekStartDate, meetings, tasks } = req.body;
+    if (!weekStartDate || !meetings) {
+      res.status(400).json({ error: "weekStartDate and meetings[] are required" });
+      return;
+    }
+    const days = buildWeekSummaries(weekStartDate, meetings, config);
+    const summary = {
+      weekStartDate,
+      days,
+      tasks: tasks ?? [],
+      generatedAt: new Date().toISOString(),
+    };
     const formatted = formatWeeklySummary(summary);
-    res.json({ summary, formatted: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
+    res.json({ summary, plainText: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: msg });
   }
 });
 
-app.get("/api/daily-summary", async (req, res) => {
+// POST /api/render-daily-summary
+app.post("/api/render-daily-summary", async (req, res) => {
   try {
-    const targetDate = req.query.targetDate as string | undefined;
-    const summary = await generateDaily(targetDate);
+    const { targetDate, meetings, tasks } = req.body;
+    if (!targetDate || !meetings) {
+      res.status(400).json({ error: "targetDate and meetings[] are required" });
+      return;
+    }
+    const normalized = normalizeEventTimes(meetings, targetDate);
+    const day = buildDaySummary(targetDate, normalized, config);
+    const summary = {
+      targetDate,
+      day,
+      tasks: tasks ?? [],
+      generatedAt: new Date().toISOString(),
+    };
     const formatted = formatDailySummary(summary);
-    res.json({ summary, formatted: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
+    res.json({ summary, plainText: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: msg });
   }
 });
 
-app.get("/api/upcoming-tasks", async (req, res) => {
-  try {
-    const timeframe = (req.query.timeframe as string) === "day" ? "day" : "week";
-    const targetDate = req.query.targetDate as string | undefined;
-    const tasks = await getUpcomingTasks(timeframe as "week" | "day", targetDate);
-    res.json({ tasks });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: msg });
-  }
-});
-
-app.post("/api/send-summary", async (req, res) => {
-  try {
-    const { summaryType, targetDate } = req.body;
-    const type = summaryType === "daily" ? "daily" : "weekly";
-    const result = await handleTrigger(type);
-    res.json({ result });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: msg });
-  }
-});
-
+// GET /api/config
 app.get("/api/config", (_req, res) => {
-  res.json({ config, scheduler: getSchedulerStatus() });
+  res.json({ config });
 });
 
+// PUT /api/config
 app.put("/api/config", (req, res) => {
   const updates = req.body;
   if (updates.workingHoursStart !== undefined) config.workingHoursStart = updates.workingHoursStart;
   if (updates.workingHoursEnd !== undefined) config.workingHoursEnd = updates.workingHoursEnd;
   if (updates.timezone !== undefined) config.timezone = updates.timezone;
-  if (updates.teamsDelivery !== undefined) config.teamsDelivery = updates.teamsDelivery;
+  if (updates.focusTimeKeywords !== undefined) config.focusTimeKeywords = updates.focusTimeKeywords;
+  if (updates.lunchKeywords !== undefined) config.lunchKeywords = updates.lunchKeywords;
   saveConfig();
-  startScheduler(handleTrigger, config);
   res.json({ config, message: "Configuration updated." });
-});
-
-app.post("/api/trigger", async (req, res) => {
-  try {
-    const type = req.body.type === "daily" ? "daily" : "weekly";
-    const result = await handleTrigger(type as "weekly" | "daily");
-    res.json({ result });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: msg });
-  }
 });
 
 // ── Startup ──
@@ -446,9 +317,6 @@ async function main(): Promise<void> {
   const mode = process.argv.includes("--http") ? "http" : "stdio";
 
   console.log(`[Prep My Day] Starting in ${mode} mode...`);
-
-  // Start scheduler if triggers are enabled
-  startScheduler(handleTrigger, config);
 
   if (mode === "http") {
     app.listen(PORT, () => {

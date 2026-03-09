@@ -1,0 +1,33 @@
+{
+  "schema_version": "v2.1",
+  "name_for_human": "Weekly Summary Renderer",
+  "description_for_human": "Renders a weekly schedule summary showing confirmed meetings and free time blocks for Monday through Friday, plus upcoming tasks.",
+  "namespace": "prepMyDay",
+  "functions": [
+    {
+      "name": "renderWeeklySummary",
+      "description": "Render a weekly schedule summary. Takes pre-fetched calendar events for Mon–Fri and optional tasks, filters confirmed meetings, computes free time blocks within working hours (9–5), and returns a formatted summary as plain text and Adaptive Card.",
+      "capabilities": {
+        "response_semantics": {
+          "data_path": "$",
+          "properties": {
+            "title": "$.plainText",
+            "subtitle": "$.summary.weekStartDate"
+          }
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    {
+      "type": "OpenApi",
+      "auth": {
+        "type": "None"
+      },
+      "spec": {
+        "url": "openapi.json"
+      },
+      "run_for_functions": ["renderWeeklySummary"]
+    }
+  ]
+}

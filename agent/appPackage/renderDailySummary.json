@@ -1,0 +1,33 @@
+{
+  "schema_version": "v2.1",
+  "name_for_human": "Daily Summary Renderer",
+  "description_for_human": "Renders a next-day schedule summary showing confirmed meetings and free time blocks, plus upcoming tasks.",
+  "namespace": "prepMyDay",
+  "functions": [
+    {
+      "name": "renderDailySummary",
+      "description": "Render a daily schedule summary. Takes pre-fetched calendar events for a single day and optional tasks, filters confirmed meetings, computes free time blocks within working hours (9–5), and returns a formatted summary as plain text and Adaptive Card.",
+      "capabilities": {
+        "response_semantics": {
+          "data_path": "$",
+          "properties": {
+            "title": "$.plainText",
+            "subtitle": "$.summary.targetDate"
+          }
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    {
+      "type": "OpenApi",
+      "auth": {
+        "type": "None"
+      },
+      "spec": {
+        "url": "openapi.json"
+      },
+      "run_for_functions": ["renderDailySummary"]
+    }
+  ]
+}

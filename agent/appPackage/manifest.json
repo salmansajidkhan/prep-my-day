@@ -1,11 +1,11 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/teams/vDevPreview/MicrosoftTeams.schema.json",
-  "manifestVersion": "devPreview",
-  "id": "{{APP_ID}}",
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
   "version": "1.0.0",
+  "id": "{{APP_ID}}",
   "developer": {
     "name": "Salman Khan",
-    "websiteUrl": "https://github.com/ArmGameDev",
+    "websiteUrl": "https://microsoft.com",
     "privacyUrl": "https://privacy.microsoft.com",
     "termsOfUseUrl": "https://www.microsoft.com/servicesagreement"
   },
@@ -14,8 +14,8 @@
     "full": "Prep My Day — Proactive Schedule & Task Summaries"
   },
   "description": {
-    "short": "Proactive schedule summaries and task reminders via Teams",
-    "full": "Prep My Day delivers concise weekly and daily schedule summaries with meetings, free time blocks, and upcoming tasks — optimized for mobile reading. Powered by Microsoft Graph Calendar and WorkIQ."
+    "short": "Concise schedule summaries with meetings, free blocks, and tasks",
+    "full": "Prep My Day compiles your Microsoft 365 calendar into concise weekly and daily schedule summaries showing confirmed meetings, free time blocks, and upcoming tasks — optimized for mobile reading in Teams."
   },
   "icons": {
     "color": "color.png",
@@ -30,10 +30,6 @@
       }
     ]
   },
-  "permissions": [
-    "identity",
-    "messageTeamMembers"
-  ],
   "validDomains": [
     "localhost",
     "prep-my-day.loca.lt"

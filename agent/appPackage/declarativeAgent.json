@@ -1,15 +1,15 @@
 {
-  "$schema": "https://aka.ms/json-schemas/copilot/plugin/v2.2/schema.json",
-  "version": "v2.2",
+  "$schema": "https://aka.ms/json-schemas/copilot/declarative-agent/v1.3/schema.json",
+  "version": "v1.3",
   "name": "Prep My Day",
-  "description": "Proactive schedule summaries and task reminders — weekly and daily digests with meetings, free blocks, and upcoming tasks.",
+  "description": "Concise schedule summaries with confirmed meetings, free time blocks, and upcoming tasks — optimized for mobile reading.",
   "instructions": "$[file('instruction.md')]",
   "conversation_starters": [
     { "text": "Show me my weekly schedule" },
-    { "text": "What's my schedule tomorrow?" },
-    { "text": "What tasks do I have this week?" },
-    { "text": "Send me my daily summary" },
-    { "text": "Configure my working hours" }
+    { "text": "What does tomorrow look like?" },
+    { "text": "Prep my week" },
+    { "text": "What's my schedule for next Monday through Friday?" },
+    { "text": "What tasks do I have coming up?" }
   ],
   "capabilities": [
     { "name": "OneDriveAndSharePoint" },
@@ -17,8 +17,12 @@
   ],
   "actions": [
     {
-      "id": "prepMyDayApi",
-      "file": "openapi.json"
+      "id": "renderWeeklySummary",
+      "file": "renderWeeklySummary.json"
+    },
+    {
+      "id": "renderDailySummary",
+      "file": "renderDailySummary.json"
     }
   ]
 }

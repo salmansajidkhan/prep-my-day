@@ -1,19 +1,20 @@
 // Core types for Prep My Day agent
+// Data is pre-fetched by M365 Copilot via built-in capabilities (Meetings, Email)
+// and passed to the MCP server for filtering, computation, and formatting.
 
-// ── Calendar Types ──
+// ── Calendar Types (input from Copilot) ──
 
 export interface CalendarEvent {
-  id: string;
   subject: string;
-  startTime: string;       // ISO 8601
-  endTime: string;         // ISO 8601
+  startTime: string;       // ISO 8601 or "10:00 AM" format
+  endTime: string;         // ISO 8601 or "11:00 AM" format
   organizer?: string;
   attendees?: string[];
   location?: string;
   isOnline?: boolean;
   joinUrl?: string;
-  showAs: ShowAs;
-  responseStatus: ResponseStatus;
+  showAs?: ShowAs;
+  responseStatus?: ResponseStatus;
   categories?: string[];
   isAllDay?: boolean;
 }
@@ -36,7 +37,7 @@ export interface DaySummary {
   totalFreeMinutes: number;
 }
 
-// ── Task Types ──
+// ── Task Types (input from Copilot/WorkIQ) ──
 
 export interface TaskItem {
   title: string;
@@ -69,34 +70,14 @@ export interface PrepMyDayConfig {
   workingHoursStart: number;   // 9 = 9:00 AM
   workingHoursEnd: number;     // 17 = 5:00 PM
   timezone: string;            // IANA timezone, e.g. "America/Los_Angeles"
-  weeklyTrigger: CronTrigger;
-  dailyTrigger: CronTrigger;
-  teamsDelivery: boolean;      // auto-send via Teams
   focusTimeKeywords: string[]; // subjects/categories treated as free
   lunchKeywords: string[];     // subjects/categories treated as free
-}
-
-export interface CronTrigger {
-  enabled: boolean;
-  cronExpression: string;      // node-cron format
-  description: string;
 }
 
 export const DEFAULT_CONFIG: PrepMyDayConfig = {
   workingHoursStart: 9,
   workingHoursEnd: 17,
   timezone: "America/Los_Angeles",
-  weeklyTrigger: {
-    enabled: true,
-    cronExpression: "0 15 * * 0",  // Sunday 3:00 PM
-    description: "Weekly summary every Sunday at 3:00 PM",
-  },
-  dailyTrigger: {
-    enabled: true,
-    cronExpression: "0 17 * * 1-5", // Mon–Fri 5:00 PM
-    description: "Daily summary every weekday at 5:00 PM",
-  },
-  teamsDelivery: false,
   focusTimeKeywords: ["focus time", "focus block", "deep work", "no meetings"],
   lunchKeywords: ["lunch", "lunch break", "lunch block"],
 };
