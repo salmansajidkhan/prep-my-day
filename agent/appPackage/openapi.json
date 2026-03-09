@@ -1,0 +1,274 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Prep My Day API",
+    "version": "1.0.0",
+    "description": "Proactive schedule summaries and task reminders"
+  },
+  "servers": [
+    { "url": "http://localhost:3003", "description": "Local development" },
+    { "url": "https://prep-my-day.loca.lt", "description": "Localtunnel" }
+  ],
+  "paths": {
+    "/api/authenticate": {
+      "post": {
+        "operationId": "authenticate",
+        "summary": "Authenticate with Microsoft Graph",
+        "responses": {
+          "200": {
+            "description": "Authentication result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "deviceCodeMessage": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/weekly-summary": {
+      "get": {
+        "operationId": "getWeeklySummary",
+        "summary": "Generate weekly schedule summary (Mon–Fri)",
+        "parameters": [
+          {
+            "name": "weekStartDate",
+            "in": "query",
+            "description": "Monday date (YYYY-MM-DD)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Weekly summary with schedule and tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": { "type": "object" },
+                    "formatted": { "type": "string" },
+                    "adaptiveCard": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/daily-summary": {
+      "get": {
+        "operationId": "getDailySummary",
+        "summary": "Generate next-day schedule summary",
+        "parameters": [
+          {
+            "name": "targetDate",
+            "in": "query",
+            "description": "Target date (YYYY-MM-DD)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily summary with schedule and tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": { "type": "object" },
+                    "formatted": { "type": "string" },
+                    "adaptiveCard": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upcoming-tasks": {
+      "get": {
+        "operationId": "getUpcomingTasks",
+        "summary": "Get upcoming tasks and project follow-ups",
+        "parameters": [
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "Timeframe: 'week' or 'day'",
+            "schema": { "type": "string", "enum": ["week", "day"] }
+          },
+          {
+            "name": "targetDate",
+            "in": "query",
+            "description": "Target date for context (YYYY-MM-DD)",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tasks": {
+                      "type": "array",
+                      "items": { "type": "object" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/send-summary": {
+      "post": {
+        "operationId": "sendSummary",
+        "summary": "Send summary via Teams message",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "summaryType": { "type": "string", "enum": ["weekly", "daily"] },
+                  "targetDate": { "type": "string" }
+                },
+                "required": ["summaryType"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Send result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "operationId": "getConfig",
+        "summary": "Get current configuration",
+        "responses": {
+          "200": {
+            "description": "Current config and scheduler status",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setConfig",
+        "summary": "Update configuration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workingHoursStart": { "type": "number" },
+                  "workingHoursEnd": { "type": "number" },
+                  "timezone": { "type": "string" },
+                  "teamsDelivery": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated config",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trigger": {
+      "post": {
+        "operationId": "triggerNow",
+        "summary": "Manually fire a scheduled trigger",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "enum": ["weekly", "daily"] }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trigger result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Server status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "agent": { "type": "string" },
+                    "authenticated": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

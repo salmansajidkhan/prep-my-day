@@ -1,0 +1,31 @@
+{
+  "name": "prep-my-day-agent",
+  "version": "1.0.0",
+  "description": "Prep My Day — MCP server that delivers proactive schedule summaries and task reminders via Teams",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
+    "start:copilot": "node dist/index.js --http & lt --port 3003 --subdomain prep-my-day",
+    "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/index.ts --http"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.0.6",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "localtunnel": "^2.0.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
