@@ -1,23 +1,23 @@
 # Prep My Day
 
-> A morning briefing agent that compiles your calendar, email, and Teams into a single actionable brief — delivered through M365 Copilot or any MCP client.
+> A morning briefing agent that compiles your calendar, email, and Teams into a single actionable brief - delivered through M365 Copilot or any MCP client.
 
 ## The Problem
 
-Knowledge workers start every day the same way: scanning calendar, triaging email, catching up on Teams, and figuring out what matters. This context-gathering ritual takes 20–30 minutes and still leaves gaps — you walk into a meeting without knowing what the attendees emailed you about yesterday.
+Knowledge workers start every day the same way: scanning calendar, triaging email, catching up on Teams, and figuring out what matters. This context-gathering ritual takes 20–30 minutes and still leaves gaps - you walk into a meeting without knowing what the attendees emailed you about yesterday.
 
-**Prep My Day** eliminates that friction. It fetches your M365 data, filters noise, and delivers one structured brief with schedule, email digest, Teams highlights, and per-meeting prep context — all before your first sip of coffee.
+**Prep My Day** eliminates that friction. It fetches your M365 data, filters noise, and delivers one structured brief with schedule, email digest, Teams highlights, and per-meeting prep context - all before your first sip of coffee.
 
 ## Features
 
-- **Morning Brief** — Schedule + email triage + Teams highlights + per-meeting prep context
-- **Weekly Summary** — Mon–Fri schedule with confirmed meetings, free blocks, and tasks
-- **Daily Summary** — Next workday's schedule in the same format
-- **Smart Filtering** — Strips tentative, declined, focus time, and lunch blocks automatically
-- **Conflict Detection** — Flags overlapping meetings with ⚠️ warnings
-- **Meeting Prep** — Surfaces recent emails and Teams threads relevant to each meeting's attendees
-- **Dual Transport** — Runs as both an MCP server (stdio) and an HTTP API
-- **Zero Auth Setup** — No custom app registration; Copilot handles M365 authentication
+- **Morning Brief** - Schedule + email triage + Teams highlights + per-meeting prep context
+- **Weekly Summary** - Mon–Fri schedule with confirmed meetings, free blocks, and tasks
+- **Daily Summary** - Next workday's schedule in the same format
+- **Smart Filtering** - Strips tentative, declined, focus time, and lunch blocks automatically
+- **Conflict Detection** - Flags overlapping meetings with ⚠️ warnings
+- **Meeting Prep** - Surfaces recent emails and Teams threads relevant to each meeting's attendees
+- **Dual Transport** - Runs as both an MCP server (stdio) and an HTTP API
+- **Zero Auth Setup** - No custom app registration; Copilot handles M365 authentication
 
 ## Architecture
 
@@ -59,17 +59,17 @@ Knowledge workers start every day the same way: scanning calendar, triaging emai
               └─────────────────────┘
 ```
 
-**Key design decision:** Copilot fetches all M365 data via its built-in capabilities. The server receives pre-fetched data and handles only computation and formatting — no Graph API calls, no token management, no custom auth.
+**Key design decision:** Copilot fetches all M365 data via its built-in capabilities. The server receives pre-fetched data and handles only computation and formatting - no Graph API calls, no token management, no custom auth.
 
 ## Example Output
 
 ```
-☀️ Morning Brief — Wednesday, 2025-03-11
+☀️ Morning Brief - Wednesday, 2025-03-11
 
 ━━ SCHEDULE ━━
-  1:30 PM - 2:00 PM  Budget Review — Alex Chen
-  2:05 PM - 2:30 PM  Security Sync — Dana Park, Ravi Patel
-  5:30 PM - 6:00 PM  Platform Workstream — Jordan Lee +12
+  1:30 PM - 2:00 PM  Budget Review - Alex Chen
+  2:05 PM - 2:30 PM  Security Sync - Dana Park, Ravi Patel
+  5:30 PM - 6:00 PM  Platform Workstream - Jordan Lee +12
   ⚠️ 1 scheduling conflict
 
 📊 3 meetings (1h 25m) · 3 free blocks (5h 35m) · ⚠️ 1 conflict
@@ -112,7 +112,7 @@ npm start          # production (compiled)
 
 ### HTTP Mode (M365 Copilot via API plugin)
 ```bash
-npm run dev:http   # development — http://localhost:3003
+npm run dev:http   # development - http://localhost:3003
 npm start:http     # production
 ```
 
@@ -120,7 +120,7 @@ npm start:http     # production
 1. Zip the `appPackage/` contents (not the folder itself)
 2. Upload to Teams Admin Center or Copilot Studio
 3. Start the server or tunnel: `npm run start:copilot`
-4. No app registration required — Copilot handles auth
+4. No app registration required - Copilot handles auth
 
 ## Project Structure
 
@@ -201,7 +201,7 @@ Persisted in `agent/data/config.json`:
 
 ## Status
 
-**Experimental / WIP** — This is a working prototype built to explore the M365 Copilot declarative agent + MCP pattern. The core briefing flow works end-to-end, but the project is under active development. Expect breaking changes.
+**Experimental / WIP** - This is a working prototype built to explore the M365 Copilot declarative agent + MCP pattern. The core briefing flow works end-to-end, but the project is under active development. Expect breaking changes.
 
 ## License
 
