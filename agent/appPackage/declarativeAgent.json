@@ -1,19 +1,21 @@
 {
-  "$schema": "https://aka.ms/json-schemas/copilot/declarative-agent/v1.3/schema.json",
-  "version": "v1.3",
+  "$schema": "https://aka.ms/json-schemas/copilot/declarative-agent/v1.4/schema.json",
+  "version": "v1.4",
   "name": "Prep My Day",
-  "description": "Concise schedule summaries with confirmed meetings, free time blocks, and upcoming tasks — optimized for mobile reading.",
+  "description": "Comprehensive morning briefings with schedule, email digest, Teams highlights, meeting prep, and tasks — optimized for mobile reading.",
   "instructions": "$[file('instruction.md')]",
+  "capabilities": [
+    { "name": "Email" },
+    { "name": "TeamsMessages" },
+    { "name": "People" }
+  ],
   "conversation_starters": [
+    { "text": "Prep my day" },
+    { "text": "Morning brief" },
     { "text": "Show me my weekly schedule" },
     { "text": "What does tomorrow look like?" },
-    { "text": "Prep my week" },
-    { "text": "What's my schedule for next Monday through Friday?" },
-    { "text": "What tasks do I have coming up?" }
-  ],
-  "capabilities": [
-    { "name": "OneDriveAndSharePoint" },
-    { "name": "GraphConnectors" }
+    { "text": "What emails need my attention?" },
+    { "text": "Prep me for my next meeting" }
   ],
   "actions": [
     {
@@ -23,6 +25,10 @@
     {
       "id": "renderDailySummary",
       "file": "renderDailySummary.json"
+    },
+    {
+      "id": "renderMorningBrief",
+      "file": "renderMorningBrief.json"
     }
   ]
 }

@@ -1,22 +1,25 @@
 # Prep My Day — Copilot Instructions
 
 ## Project Overview
-**Prep My Day** is an M365 Copilot declarative agent + MCP server that delivers concise schedule summaries. Copilot fetches calendar data via built-in Meetings capability, then passes pre-fetched events to the MCP server for filtering, computation, and formatting. **No custom Azure AD app registration required.**
+**Prep My Day** is an M365 Copilot declarative agent + MCP server that delivers comprehensive morning briefings combining schedule, email digest, Teams highlights, and per-meeting prep context. Copilot fetches M365 data via built-in capabilities (Calendar, Email, TeamsMessages, People), then passes pre-fetched data to the MCP server for filtering, computation, and formatting. **No custom Azure AD app registration required.**
 
 **Primary user:** Salman Khan (PM, WE2 Security Partner Enablement)
 
 ## Architecture (Declarative Agent + API Plugin)
 ```
-User: "Prep my week"
+User: "Prep my day"
     ↓
 M365 Copilot (declarativeAgent.json)
     ↓
-Uses built-in "Meetings" capability → fetches calendar events (no custom auth)
+Uses built-in Calendar → fetches today's meetings
+Uses Email capability → fetches recent important emails
+Uses TeamsMessages capability → fetches unread Teams messages
+Uses People capability → fetches attendee org context
 Uses WorkIQ (if available) → fetches tasks
     ↓
-Calls MCP Server POST /api/render-weekly-summary (via OpenAPI plugin)
+Calls MCP Server POST /api/render-morning-brief (via OpenAPI plugin)
     ↓
-MCP Server: filters confirmed meetings, computes free blocks, formats output
+MCP Server: filters meetings, computes free blocks, formats email/Teams/meeting prep
     ↓
 Returns plainText + Adaptive Card → Copilot displays to user
 ```
@@ -37,16 +40,17 @@ PrepMyDay/
 ├── agent/                          # Main agent
 │   ├── src/                        # TypeScript source
 │   │   ├── index.ts                # MCP + HTTP hybrid server (entry point)
-│   │   ├── types.ts                # Core types + helpers
+│   │   ├── types.ts                # Core types + M365 enrichment types + helpers
 │   │   ├── schedule-builder.ts     # Filter meetings, compute free blocks
-│   │   └── message-formatter.ts    # Text + Adaptive Card formatting
+│   │   └── message-formatter.ts    # Text + Adaptive Card formatting (daily, weekly, morning brief)
 │   ├── appPackage/                 # M365 Copilot declarative agent manifest
 │   │   ├── manifest.json           # Teams app manifest (v1.19)
-│   │   ├── declarativeAgent.json   # Agent config with capabilities + actions
-│   │   ├── instruction.md          # Agent behavioral instructions
+│   │   ├── declarativeAgent.json   # Agent config with Email/Teams/People capabilities + actions
+│   │   ├── instruction.md          # Agent behavioral instructions (3 workflows)
 │   │   ├── openapi.json            # OpenAPI spec for HTTP endpoints
-│   │   ├── renderWeeklySummary.json # Action wrapper for weekly
-│   │   └── renderDailySummary.json  # Action wrapper for daily
+│   │   ├── renderWeeklySummary.json  # Action wrapper for weekly
+│   │   ├── renderDailySummary.json   # Action wrapper for daily
+│   │   └── renderMorningBrief.json   # Action wrapper for morning brief
 │   ├── dist/                       # Compiled JS output
 │   └── data/                       # Runtime config
 ├── .github/
@@ -60,10 +64,12 @@ PrepMyDay/
 2. **No custom auth** — Copilot handles authentication via user's existing session
 3. **API plugin** — OpenAPI spec connects declarative agent to MCP server
 4. **Dual-mode execution** — stdio (MCP/CLI) and HTTP (M365 Copilot)
+5. **M365 capability grounding** — Email, TeamsMessages, People capabilities enable rich context
 
-## MCP Tools (4 tools)
+## MCP Tools (6 tools)
 | Tool | Description |
 |------|-------------|
+| `render_morning_brief` | Comprehensive morning briefing: schedule + email + Teams + meeting prep |
 | `render_weekly_summary` | Filter meetings + compute free blocks for Mon–Fri |
 | `render_daily_summary` | Filter meetings + compute free blocks for one day |
 | `get_config` | View current configuration |
@@ -93,5 +99,9 @@ npm run dev:http     # HTTP mode on port 3003
 - No custom Azure AD app required — Copilot handles auth via user's M365 session
 - Server receives pre-fetched data, does NOT call Graph directly
 - WorkIQ tasks are fetched by Copilot and passed in as input
+- Email/Teams data is fetched by Copilot via declared capabilities and passed to server
 - Data flows: Copilot → Server → formatted output
 - Deploy via Teams app package (appPackage.zip) to M365 Copilot
+- **`capabilities` in declarativeAgent.json is a whitelist** — listing specific capabilities restricts the agent to only those. The agent declares Email, TeamsMessages, and People explicitly. Calendar access comes from default M365 grounding (no explicit capability needed).
+- Zip Teams app packages with wildcard (`folder\*`) to avoid nested subfolder in the archive
+- **New types**: EmailDigest, TeamsHighlight, MeetingPrep, MorningBrief — for M365 enrichment data

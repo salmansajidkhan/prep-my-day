@@ -1,0 +1,43 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.2/schema.json",
+  "schema_version": "v2.2",
+  "name_for_human": "Render Morning Brief",
+  "description_for_human": "Render a comprehensive morning briefing combining schedule, email digest, Teams highlights, and meeting prep context.",
+  "description_for_model": "Call this action when the user asks to 'prep my day', 'morning brief', or 'what do I need to know today'. Pass today's calendar events, email digest, Teams highlights, meeting prep context, tasks, and action items. The server filters meetings, computes free blocks, and formats everything into a mobile-optimized morning brief.",
+  "namespace": "prepMyDay",
+  "functions": [
+    {
+      "name": "renderMorningBrief",
+      "description": "Render a comprehensive morning briefing with schedule, email digest, Teams highlights, and per-meeting prep context.",
+      "capabilities": {
+        "response_semantics": {
+          "data_path": "$",
+          "properties": {
+            "title": "$.plainText",
+            "subtitle": "Morning Brief"
+          },
+          "static_template": {
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "type": "AdaptiveCard",
+            "version": "1.5",
+            "body": [
+              {
+                "type": "TextBlock",
+                "text": "${plainText}",
+                "wrap": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "runtimes": [
+    {
+      "type": "OpenApi",
+      "auth": { "type": "None" },
+      "spec": { "url": "openapi.json" },
+      "run_for_functions": ["renderMorningBrief"]
+    }
+  ]
+}

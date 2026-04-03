@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Prep My Day API",
-    "version": "1.0.0",
-    "description": "Schedule summary renderer — filters meetings, computes free blocks, formats output"
+    "version": "2.0.0",
+    "description": "Schedule summary renderer with morning brief — filters meetings, computes free blocks, surfaces email/Teams context, formats output"
   },
   "servers": [
     { "url": "http://localhost:3003", "description": "Local development" },
@@ -110,6 +110,76 @@
         }
       }
     },
+    "/api/render-morning-brief": {
+      "post": {
+        "operationId": "renderMorningBrief",
+        "summary": "Render comprehensive morning briefing with calendar, email digest, Teams highlights, and per-meeting prep context",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetDate", "meetings"],
+                "properties": {
+                  "targetDate": {
+                    "type": "string",
+                    "description": "Target date (YYYY-MM-DD), typically today"
+                  },
+                  "meetings": {
+                    "type": "array",
+                    "description": "Calendar events for the target date",
+                    "items": { "$ref": "#/components/schemas/CalendarEvent" }
+                  },
+                  "tasks": {
+                    "type": "array",
+                    "description": "Upcoming tasks/follow-ups",
+                    "items": { "$ref": "#/components/schemas/TaskItem" }
+                  },
+                  "actionItems": {
+                    "type": "array",
+                    "description": "Action items, FYIs, and todos from email/Teams triage",
+                    "items": { "$ref": "#/components/schemas/ActionItem" }
+                  },
+                  "emailDigest": {
+                    "type": "array",
+                    "description": "Important recent emails to surface in the brief",
+                    "items": { "$ref": "#/components/schemas/EmailDigest" }
+                  },
+                  "teamsHighlights": {
+                    "type": "array",
+                    "description": "Recent unread or important Teams messages",
+                    "items": { "$ref": "#/components/schemas/TeamsHighlight" }
+                  },
+                  "meetingPreps": {
+                    "type": "array",
+                    "description": "Per-meeting context from recent emails and Teams with attendees",
+                    "items": { "$ref": "#/components/schemas/MeetingPrep" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Formatted morning brief",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "brief": { "type": "object" },
+                    "plainText": { "type": "string" },
+                    "adaptiveCard": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "operationId": "healthCheck",
@@ -164,6 +234,55 @@
           "sourceDetail": { "type": "string" },
           "documentUrl": { "type": "string", "description": "Link to source document" },
           "priority": { "type": "string", "enum": ["high", "normal", "low"] }
+        }
+      },
+      "ActionItem": {
+        "type": "object",
+        "required": ["title", "category"],
+        "properties": {
+          "title": { "type": "string" },
+          "category": { "type": "string", "enum": ["action", "fyi", "todo"], "description": "action = needs response, fyi = informational, todo = follow-up task" },
+          "source": { "type": "string", "description": "email, teams, planner" },
+          "sender": { "type": "string" },
+          "summary": { "type": "string", "description": "Brief context" },
+          "priority": { "type": "string", "enum": ["high", "normal", "low"] },
+          "url": { "type": "string", "description": "Deep link to email or message" }
+        }
+      },
+      "EmailDigest": {
+        "type": "object",
+        "required": ["subject", "sender", "snippet"],
+        "properties": {
+          "subject": { "type": "string" },
+          "sender": { "type": "string" },
+          "receivedAt": { "type": "string", "description": "ISO 8601 datetime" },
+          "snippet": { "type": "string", "description": "Brief preview of email content" },
+          "threadParticipants": { "type": "array", "items": { "type": "string" } },
+          "priority": { "type": "string", "enum": ["high", "normal", "low"] },
+          "needsResponse": { "type": "boolean", "description": "Whether this email requires a response" },
+          "url": { "type": "string", "description": "Deep link to email" }
+        }
+      },
+      "TeamsHighlight": {
+        "type": "object",
+        "required": ["channelOrChat", "sender", "message"],
+        "properties": {
+          "channelOrChat": { "type": "string", "description": "Channel name or chat participants" },
+          "sender": { "type": "string" },
+          "message": { "type": "string", "description": "Brief message content" },
+          "sentAt": { "type": "string", "description": "ISO 8601 datetime" },
+          "isUnread": { "type": "boolean" },
+          "url": { "type": "string", "description": "Deep link to Teams message" }
+        }
+      },
+      "MeetingPrep": {
+        "type": "object",
+        "required": ["meetingSubject"],
+        "properties": {
+          "meetingSubject": { "type": "string", "description": "The meeting this prep is for" },
+          "recentEmails": { "type": "array", "items": { "$ref": "#/components/schemas/EmailDigest" }, "description": "Recent email threads with attendees" },
+          "recentTeamsMessages": { "type": "array", "items": { "$ref": "#/components/schemas/TeamsHighlight" }, "description": "Recent Teams messages related to meeting" },
+          "attendeeNotes": { "type": "string", "description": "Org context, roles, or notes about attendees" }
         }
       }
     }

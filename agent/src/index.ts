@@ -18,6 +18,7 @@ import { buildDaySummary, buildWeekSummaries } from "./schedule-builder.js";
 import {
   formatWeeklySummary,
   formatDailySummary,
+  formatMorningBrief,
 } from "./message-formatter.js";
 import {
   DEFAULT_CONFIG,
@@ -29,6 +30,10 @@ import type {
   PrepMyDayConfig,
   CalendarEvent,
   TaskItem,
+  ActionItem,
+  EmailDigest,
+  TeamsHighlight,
+  MeetingPrep,
 } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,6 +64,43 @@ const TaskItemSchema = z.object({
   sourceDetail: z.string().optional(),
   documentUrl: z.string().optional(),
   priority: z.enum(["high", "normal", "low"]).optional(),
+});
+
+const ActionItemSchema = z.object({
+  title: z.string(),
+  category: z.enum(["action", "fyi", "todo"]).describe("action = needs response, fyi = informational, todo = follow-up task"),
+  source: z.string().optional().describe("email, teams, planner"),
+  sender: z.string().optional(),
+  summary: z.string().optional().describe("Brief context on what they need"),
+  priority: z.enum(["high", "normal", "low"]).optional(),
+  url: z.string().optional().describe("Deep link to email or message"),
+});
+
+const EmailDigestSchema = z.object({
+  subject: z.string(),
+  sender: z.string(),
+  receivedAt: z.string().optional().describe("ISO 8601 datetime"),
+  snippet: z.string().describe("Brief preview of email content"),
+  threadParticipants: z.array(z.string()).optional(),
+  priority: z.enum(["high", "normal", "low"]).optional(),
+  needsResponse: z.boolean().optional().describe("Whether this email requires a response"),
+  url: z.string().optional().describe("Deep link to email"),
+});
+
+const TeamsHighlightSchema = z.object({
+  channelOrChat: z.string().describe("Channel name or chat participants"),
+  sender: z.string(),
+  message: z.string().describe("Brief message content"),
+  sentAt: z.string().optional().describe("ISO 8601 datetime"),
+  isUnread: z.boolean().optional(),
+  url: z.string().optional().describe("Deep link to Teams message"),
+});
+
+const MeetingPrepSchema = z.object({
+  meetingSubject: z.string().describe("The meeting this prep is for"),
+  recentEmails: z.array(EmailDigestSchema).optional().describe("Recent email threads with meeting attendees"),
+  recentTeamsMessages: z.array(TeamsHighlightSchema).optional().describe("Recent Teams messages related to this meeting"),
+  attendeeNotes: z.string().optional().describe("Org context, roles, or notes about attendees"),
 });
 
 // ── Config persistence ──
@@ -150,14 +192,16 @@ server.tool(
     weekStartDate: z.string().describe("Monday date (YYYY-MM-DD)"),
     meetings: z.array(CalendarEventSchema).describe("All calendar events for Mon–Fri, fetched by Copilot"),
     tasks: z.array(TaskItemSchema).optional().describe("Upcoming tasks/follow-ups from WorkIQ"),
+    actionItems: z.array(ActionItemSchema).optional().describe("Action items, FYIs, and todos from email/Teams triage"),
   },
-  async ({ weekStartDate, meetings, tasks }) => {
+  async ({ weekStartDate, meetings, tasks, actionItems }) => {
     try {
       const days = buildWeekSummaries(weekStartDate, meetings as CalendarEvent[], config);
       const summary = {
         weekStartDate,
         days,
         tasks: (tasks as TaskItem[]) ?? [],
+        actionItems: (actionItems as ActionItem[]) ?? [],
         generatedAt: new Date().toISOString(),
       };
       const formatted = formatWeeklySummary(summary);
@@ -177,8 +221,9 @@ server.tool(
     targetDate: z.string().describe("Target date (YYYY-MM-DD)"),
     meetings: z.array(CalendarEventSchema).describe("Calendar events for the target date, fetched by Copilot"),
     tasks: z.array(TaskItemSchema).optional().describe("Upcoming tasks/follow-ups from WorkIQ"),
+    actionItems: z.array(ActionItemSchema).optional().describe("Action items, FYIs, and todos from email/Teams triage"),
   },
-  async ({ targetDate, meetings, tasks }) => {
+  async ({ targetDate, meetings, tasks, actionItems }) => {
     try {
       const normalized = normalizeEventTimes(meetings as CalendarEvent[], targetDate);
       const day = buildDaySummary(targetDate, normalized, config);
@@ -186,6 +231,7 @@ server.tool(
         targetDate,
         day,
         tasks: (tasks as TaskItem[]) ?? [],
+        actionItems: (actionItems as ActionItem[]) ?? [],
         generatedAt: new Date().toISOString(),
       };
       const formatted = formatDailySummary(summary);
@@ -197,7 +243,43 @@ server.tool(
   },
 );
 
-// Tool 3: get_config
+// Tool 3: render_morning_brief
+server.tool(
+  "render_morning_brief",
+  "Render a comprehensive morning briefing combining calendar, email digest, Teams highlights, and per-meeting prep context. Copilot should fetch today's meetings (Calendar), important recent emails (Email capability), unread Teams messages (TeamsMessages capability), and tasks (WorkIQ) before calling this tool.",
+  {
+    targetDate: z.string().describe("Target date (YYYY-MM-DD), typically today"),
+    meetings: z.array(CalendarEventSchema).describe("Calendar events for the target date"),
+    tasks: z.array(TaskItemSchema).optional().describe("Upcoming tasks/follow-ups"),
+    actionItems: z.array(ActionItemSchema).optional().describe("Action items, FYIs, and todos"),
+    emailDigest: z.array(EmailDigestSchema).optional().describe("Important recent emails to surface in the brief"),
+    teamsHighlights: z.array(TeamsHighlightSchema).optional().describe("Recent unread or important Teams messages"),
+    meetingPreps: z.array(MeetingPrepSchema).optional().describe("Per-meeting context: recent emails/Teams with attendees"),
+  },
+  async ({ targetDate, meetings, tasks, actionItems, emailDigest, teamsHighlights, meetingPreps }) => {
+    try {
+      const normalized = normalizeEventTimes(meetings as CalendarEvent[], targetDate);
+      const day = buildDaySummary(targetDate, normalized, config);
+      const brief = {
+        targetDate,
+        day,
+        tasks: (tasks as TaskItem[]) ?? [],
+        actionItems: (actionItems as ActionItem[]) ?? [],
+        emailDigest: (emailDigest as EmailDigest[]) ?? [],
+        teamsHighlights: (teamsHighlights as TeamsHighlight[]) ?? [],
+        meetingPreps: (meetingPreps as MeetingPrep[]) ?? [],
+        generatedAt: new Date().toISOString(),
+      };
+      const formatted = formatMorningBrief(brief);
+      return { content: [{ type: "text", text: formatted.plainText }] };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { content: [{ type: "text", text: `Error: ${msg}` }] };
+    }
+  },
+);
+
+// Tool 4: get_config
 server.tool(
   "get_config",
   "Get current Prep My Day configuration (working hours, timezone, filter keywords)",
@@ -250,7 +332,7 @@ app.get("/health", (_req, res) => {
 // POST /api/render-weekly-summary
 app.post("/api/render-weekly-summary", async (req, res) => {
   try {
-    const { weekStartDate, meetings, tasks } = req.body;
+    const { weekStartDate, meetings, tasks, actionItems } = req.body;
     if (!weekStartDate || !meetings) {
       res.status(400).json({ error: "weekStartDate and meetings[] are required" });
       return;
@@ -260,6 +342,7 @@ app.post("/api/render-weekly-summary", async (req, res) => {
       weekStartDate,
       days,
       tasks: tasks ?? [],
+      actionItems: actionItems ?? [],
       generatedAt: new Date().toISOString(),
     };
     const formatted = formatWeeklySummary(summary);
@@ -273,7 +356,7 @@ app.post("/api/render-weekly-summary", async (req, res) => {
 // POST /api/render-daily-summary
 app.post("/api/render-daily-summary", async (req, res) => {
   try {
-    const { targetDate, meetings, tasks } = req.body;
+    const { targetDate, meetings, tasks, actionItems } = req.body;
     if (!targetDate || !meetings) {
       res.status(400).json({ error: "targetDate and meetings[] are required" });
       return;
@@ -284,10 +367,39 @@ app.post("/api/render-daily-summary", async (req, res) => {
       targetDate,
       day,
       tasks: tasks ?? [],
+      actionItems: actionItems ?? [],
       generatedAt: new Date().toISOString(),
     };
     const formatted = formatDailySummary(summary);
     res.json({ summary, plainText: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// POST /api/render-morning-brief
+app.post("/api/render-morning-brief", async (req, res) => {
+  try {
+    const { targetDate, meetings, tasks, actionItems, emailDigest, teamsHighlights, meetingPreps } = req.body;
+    if (!targetDate || !meetings) {
+      res.status(400).json({ error: "targetDate and meetings[] are required" });
+      return;
+    }
+    const normalized = normalizeEventTimes(meetings, targetDate);
+    const day = buildDaySummary(targetDate, normalized, config);
+    const brief = {
+      targetDate,
+      day,
+      tasks: tasks ?? [],
+      actionItems: actionItems ?? [],
+      emailDigest: emailDigest ?? [],
+      teamsHighlights: teamsHighlights ?? [],
+      meetingPreps: meetingPreps ?? [],
+      generatedAt: new Date().toISOString(),
+    };
+    const formatted = formatMorningBrief(brief);
+    res.json({ brief, plainText: formatted.plainText, adaptiveCard: formatted.adaptiveCard });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     res.status(500).json({ error: msg });
